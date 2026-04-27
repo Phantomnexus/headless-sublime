@@ -63,8 +63,14 @@ class MelonHarvester
       return
     end
     unless cur_x == CENTER_ROW || cur_x == CENTER_ROW + CENTER_ROW_WIDTH - 1
-      Log.warn { "Start in front of a plot, in the middle row (x=#{CENTER_ROW} or #{CENTER_ROW + CENTER_ROW_WIDTH - 1})" }
-      return
+      Log.info { "Not on the centerline (x=#{cur_x}); chopping back" }
+      wake_up_and_recover
+      cur_x = bot.x.floor.to_i
+      cur_z = bot.z.floor.to_i
+      unless cur_x == CENTER_ROW || cur_x == CENTER_ROW + CENTER_ROW_WIDTH - 1
+        Log.warn { "Failed to recover to centerline (x=#{cur_x})" }
+        return
+      end
     end
 
     if cur_x == CENTER_ROW
@@ -113,20 +119,27 @@ class MelonHarvester
     bot.eat!
   end
 
-  # Harvests one row by walking to the far x of the line while holding attack.
-  # The rosegold tick loop continues digging the targeted block as the bot moves
-  # through it. If a melon truly blocks movement (Physics::MovementStuck), look
-  # down at it and chew through, then resume.
   private def harvest_line
     go_front_line
     refresh_speed_if_needed
     pick_axe
 
     yaw = (90 + @dir * 180).to_f32
-    target_x = end_of_line_x
-    z = bot.z.floor.to_i
+    walk_attacking_to(end_of_line_x, bot.z.floor.to_i, yaw)
+  end
 
-    until line_finished?
+  # Walks to (target_x, z) on a fixed yaw while holding attack. The rosegold
+  # tick loop continues digging the targeted block as the bot moves through it.
+  # If movement stalls (Physics::MovementStuck), look steeply down and chew
+  # through the blocker, then retry. A spawned fiber keeps re-equipping a fresh
+  # axe so a tool break mid-traversal doesn't strand us with bare fists.
+  private def walk_attacking_to(target_x : Int32, z : Int32, yaw : Float32)
+    going_east = target_x > bot.x.floor.to_i
+
+    loop do
+      x = bot.x.floor.to_i
+      break if going_east ? x >= target_x : x <= target_x
+
       bot.look = Rosegold::Look.new(yaw, PITCH_VALUE)
 
       keep_picking = true
@@ -150,6 +163,34 @@ class MelonHarvester
         keep_picking = false
       end
     end
+  end
+
+  # Recovery after an unexpected reconnect: chop back to the centerline so the
+  # main loop can pick up where it left off. Jumps first in case a melon grew at
+  # head height; figures out which side of the farm we landed on, faces the
+  # nearer centerline column (CENTER_ROW or CENTER_ROW + 3), and walks while
+  # attacking.
+  private def wake_up_and_recover
+    bot.start_jump
+    bot.wait_ticks 5
+
+    pick_axe rescue Log.warn { "No usable axe in inventory; recovery will be slow" }
+
+    cur_x = bot.x.floor.to_i
+    z = bot.z.floor.to_i
+    target_x =
+      if cur_x < CENTER_ROW
+        CENTER_ROW
+      elsif cur_x > CENTER_ROW + CENTER_ROW_WIDTH - 1
+        CENTER_ROW + CENTER_ROW_WIDTH - 1
+      elsif cur_x - CENTER_ROW <= 1
+        CENTER_ROW
+      else
+        CENTER_ROW + CENTER_ROW_WIDTH - 1
+      end
+    yaw = cur_x < target_x ? 270.0_f32 : 90.0_f32
+
+    walk_attacking_to(target_x, z, yaw)
   end
 
   # The far x of a line for a given direction. Each side has a center boundary
@@ -176,11 +217,6 @@ class MelonHarvester
     bot.move_to(obj_x, obj_z)
     bot.stop_digging
     bot.wait_tick
-  end
-
-  private def line_finished? : Bool
-    x = bot.x.floor.to_i
-    @dir == 0 ? x <= end_of_line_x : x >= end_of_line_x
   end
 
   private def pick_axe
