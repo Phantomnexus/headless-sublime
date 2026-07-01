@@ -28,8 +28,9 @@ X_FURNACE_COMPACTOR =  8379
 Z_FURNACE_COMPACTOR = -2645
 Y_COMPACTOR         =   143
 
-COMPACT_EVERY_PLOT = 6
-LAG_TICKS          = 6
+COMPACT_EVERY_PLOT =  6
+LAG_TICKS          =  6
+MAX_STUCK_RETRIES  = 20 # consecutive move_to stalls before abandoning a row
 
 DISCORD_GROUP = "mtafarm"
 FARM_NAME     = "Melon farm near Maius(gs melon farm)"
@@ -136,32 +137,41 @@ class MelonHarvester
   private def walk_attacking_to(target_x : Int32, z : Int32, yaw : Float32)
     going_east = target_x > bot.x.floor.to_i
 
-    loop do
-      x = bot.x.floor.to_i
-      break if going_east ? x >= target_x : x <= target_x
+    keep_picking = true
+    spawn do
+      while keep_picking && bot.connected?
+        bot.wait_ticks 4
+        pick_axe rescue nil
+      end
+    end
 
-      bot.look = Rosegold::Look.new(yaw, PITCH_VALUE)
+    begin
+      stuck_count = 0
+      while bot.connected?
+        x = bot.x.floor.to_i
+        break if going_east ? x >= target_x : x <= target_x
 
-      keep_picking = true
-      spawn do
-        while keep_picking && bot.connected?
-          bot.wait_ticks 4
-          pick_axe rescue nil
+        bot.look = Rosegold::Look.new(yaw, PITCH_VALUE)
+
+        begin
+          bot.start_digging
+          bot.move_to(target_x, z, stuck_timeout_ticks: 30)
+          bot.stop_digging
+          stuck_count = 0
+        rescue Rosegold::Physics::MovementStuck
+          bot.stop_digging
+          stuck_count += 1
+          if stuck_count > MAX_STUCK_RETRIES
+            Log.warn { "Abandoning walk to (#{target_x}, #{z}); stuck #{stuck_count} times in a row" }
+            break
+          end
+          bot.look = Rosegold::Look.new(yaw, PITCH_STUCK)
+          bot.dig BREAK_TIME * 4
+          bot.look = Rosegold::Look.new(yaw, PITCH_VALUE)
         end
       end
-
-      begin
-        bot.start_digging
-        bot.move_to(target_x, z, stuck_timeout_ticks: 30)
-        bot.stop_digging
-      rescue Rosegold::Physics::MovementStuck
-        bot.stop_digging
-        bot.look = Rosegold::Look.new(yaw, PITCH_STUCK)
-        bot.dig BREAK_TIME * 4
-        bot.look = Rosegold::Look.new(yaw, PITCH_VALUE)
-      ensure
-        keep_picking = false
-      end
+    ensure
+      keep_picking = false
     end
   end
 
