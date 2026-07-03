@@ -1,4 +1,4 @@
-name: rosegold-example
+name: headless-sublime
 version: 0.3.0
 description: Template repository for creating Minecraft bots with Rosegold.cr
 
