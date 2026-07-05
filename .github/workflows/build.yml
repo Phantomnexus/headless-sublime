@@ -37,7 +37,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: rosegold-example-windows-${{ steps.version.outputs.version }}
+        name: sublime-headless-windows-${{ steps.version.outputs.version }}
         path: |
           bin
           README.md
@@ -67,7 +67,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: rosegold-example-linux-${{ steps.version.outputs.version }}
+        name: Sublime-headless-linux-${{ steps.version.outputs.version }}
         path: |
           bin
           README.md
