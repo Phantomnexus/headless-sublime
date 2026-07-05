@@ -109,7 +109,9 @@ class MelonHarvester
   private def harvest_side
     while @current_plot > Z_NORTH
       harvest_plot
+      Log.info { "checking if we should compact: @plot_count: #{@plot_count}, melons: #{bot.inventory.count("melon")}" }
       if @plot_count >= COMPACT_EVERY_PLOT || bot.inventory.count("melon") >= 1700
+      Log.info { "compacting melons..." }
         compact
         @plot_count = 0
       end
