@@ -125,7 +125,9 @@ class MelonHarvester
     harvest_line
     @dir = 1 - @dir
     @plot_count += 1
+    bot.look = Rosegold::Look.new(bot.yaw, -30.0_f32)  # look up
     bot.eat!
+    bot.look = Rosegold::Look.new(bot.yaw, PITCH_VALUE)
   end
 
   private def harvest_line
